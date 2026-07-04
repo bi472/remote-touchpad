@@ -27,15 +27,21 @@ const challengeResponse = (message, secret) => {
 };
 
 export default class Socket extends EventTarget {
+    #url;
     #secret;
     #authenticated;
     #ws;
 
     constructor(url, secret) {
         super();
+        this.#url = url;
         this.#secret = secret;
+        this.#connect();
+    }
+
+    #connect() {
         this.#authenticated = false;
-        this.#ws = new WebSocket(url);
+        this.#ws = new WebSocket(this.#url);
         this.#ws.addEventListener("message", this.#handle_ws_message.bind(this));
         this.#ws.addEventListener("close", this.#handle_ws_close.bind(this));
     }
@@ -58,6 +64,9 @@ export default class Socket extends EventTarget {
 
     #handle_ws_close() {
         this.dispatchEvent(new CustomEvent("close"));
+        setTimeout(() => {
+            this.#connect();
+        }, 2000);
     }
 
     send(message) {

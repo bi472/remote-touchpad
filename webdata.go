@@ -36,6 +36,7 @@ var webdataTypes = map[string]string{
 	".mjs":  "text/javascript; charset=utf-8",
 	".png":  "image/png",
 	".woff": "font/woff",
+	".json": "application/manifest+json; charset=utf-8",
 }
 
 func init() {

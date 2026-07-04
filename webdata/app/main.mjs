@@ -24,9 +24,24 @@ import UI from "./ui.mjs";
 const url = new URL("ws", location.href);
 url.protocol = url.protocol == "http:" ? "ws:" : "wss:";
 
-const socket = new Socket(url, window.location.hash.substr(1));
+let secret = window.location.hash.substr(1);
+if (secret) {
+    localStorage.setItem("auth_secret", secret);
+} else {
+    secret = localStorage.getItem("auth_secret") || "";
+}
+
+const socket = new Socket(url, secret);
 const inputController = new InputController(socket);
 const ui = new UI(inputController);
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch((err) => {
+            console.error('Service Worker registration failed:', err);
+        });
+    });
+}
 
 socket.addEventListener("config", (event) => {
     const config = event.detail;
@@ -45,6 +60,9 @@ window.app = {
     showTextInput: ui.showTextInput.bind(ui),
     showKeys: ui.showKeys.bind(ui),
     setKeysPage: ui.setKeysPage.bind(ui),
+    focusKeyboard: ui.focusKeyboard.bind(ui),
+    showSystemControls: ui.showSystemControls.bind(ui),
+    customAction: inputController.customAction.bind(inputController),
 };
 for (const name in inputcontrollerModule) {
     if (name.startsWith("KEY_")) {

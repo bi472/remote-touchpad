@@ -81,7 +81,7 @@ button {
     max-width: 100%;
     max-height: 100%;
     border-radius: 2px;
-    font-size: 2rem;
+    font-size: 1.5rem;
     color: white;
     font-family: "icon";
     overflow: hidden;
@@ -164,12 +164,12 @@ textarea:focus {
 
 #keys .page {
     display: grid;
-    gap: 0.5rem;
+    gap: 0.4rem;
     min-height: 0;
     min-width: 0;
-    grid-auto-rows: minmax(min-content, 6rem);
-    grid-auto-columns: minmax(min-content, 8rem);
-    padding: 0.5rem;
+    grid-auto-rows: minmax(min-content, 4.5rem);
+    grid-auto-columns: minmax(min-content, 6rem);
+    padding: 0.4rem;
 }
 
 #keys .page * {
@@ -226,3 +226,12 @@ textarea:focus {
         border-left: none;
     }
 } }
+
+#keys-textarea {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
+}

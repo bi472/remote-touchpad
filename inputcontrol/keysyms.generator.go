@@ -36,7 +36,7 @@ type Keysym int32
 const (
 	keysymdefHeader  string = "/usr/include/X11/keysymdef.h"
 	output           string = "keysyms.generated.go"
-	maxMappedUnicode rune   = 0xff
+	maxMappedUnicode rune   = 0xffff
 )
 
 var overrideKeysyms = map[string]rune{

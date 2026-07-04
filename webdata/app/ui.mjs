@@ -21,6 +21,7 @@ import Keyboard from "./keyboard.mjs";
 import Mouse from "./mouse.mjs";
 import Touchpad from "./touchpad.mjs";
 import * as compat from "./compat.mjs";
+import { KEY_BACK_SPACE } from "./inputcontroller.mjs";
 
 const IGNORE_CLICK_AFTER_TOUCH_DURATION = 1000; // milliseconds
 const CLICK_VIBRATION_PATTERN = [10];
@@ -32,6 +33,7 @@ const closedScene = document.getElementById("closed");
 const padScene = document.getElementById("pad");
 const keysScene = document.getElementById("keys");
 const keysPages = keysScene.querySelectorAll(":scope > .page");
+const keysTextarea = document.getElementById("keys-textarea");
 const textInputScene = document.getElementById("text-input");
 const textInput = textInputScene.querySelector("textarea");
 const mouseScene = document.getElementById("mouse");
@@ -47,6 +49,7 @@ export default class UI {
     #mouse;
     #keyboard;
     #touchpad;
+    #oldValue = "";
 
     constructor(inputController) {
         this.#inputController = inputController;
@@ -57,11 +60,47 @@ export default class UI {
             (target) => target.classList.contains("touch-input"));
         document.addEventListener("mousedown", this.#handleMousedown.bind(this));
         document.addEventListener("touchend", this.#handleTouchend.bind(this));
-        textInput.addEventListener("input", () => { this.#updateTextInput(); });
+        textInput.addEventListener("input", () => {
+            let newValue = textInput.value;
+            if (newValue.length > this.#oldValue.length) {
+                const added = newValue.substring(this.#oldValue.length);
+                this.#inputController.keyboardText(added);
+            } else if (newValue.length < this.#oldValue.length) {
+                const diff = this.#oldValue.length - newValue.length;
+                for (let i = 0; i < diff; i++) {
+                    this.#inputController.keyboardKey(KEY_BACK_SPACE);
+                }
+            }
+            if (newValue.length === 0) {
+                newValue = "\n";
+                textInput.value = "\n";
+            }
+            this.#oldValue = newValue;
+            this.#updateTextInput();
+        });
         sendText.addEventListener("click", this.#handleSendText.bind(this));
         window.addEventListener("popstate", () => { this.#update(); });
         compat.addFullscreenchangeEventListener(() => { this.#update(); });
         compat.addPointerlockchangeEventListener(() => { this.#update(); });
+        keysTextarea.addEventListener("input", () => {
+            let newValue = keysTextarea.value;
+            if (newValue.length > this.#oldValue.length) {
+                const added = newValue.substring(this.#oldValue.length);
+                this.#inputController.keyboardText(added);
+            } else if (newValue.length < this.#oldValue.length) {
+                const diff = this.#oldValue.length - newValue.length;
+                for (let i = 0; i < diff; i++) {
+                    this.#inputController.keyboardKey(KEY_BACK_SPACE);
+                }
+            }
+            if (newValue.length === 0) {
+                newValue = "\n";
+                keysTextarea.value = "\n";
+            }
+            this.#oldValue = newValue;
+        });
+
+
         for (const button of buttons) {
             button.setAttribute("tabindex", "-1");
             button.addEventListener("click", this.#handleButtonClick.bind(this));
@@ -73,9 +112,8 @@ export default class UI {
         this.#mouse.configure(config);
         this.#keyboard.configure(config);
         this.#touchpad.configure(config);
-        if (!this.#closed) {
-            this.#ready = true;
-        }
+        this.#closed = false;
+        this.#ready = true;
         this.#update();
     }
 
@@ -103,7 +141,7 @@ export default class UI {
             textInput.value = newValue;
         }
         sessionStorage.setItem("text-input", textInput.value);
-        sendText.textContent = sendText.getAttribute(`data-${textInput.value ? "send" : "back"}-content`);
+        sendText.textContent = sendText.getAttribute("data-back-content");
         textInput.focus();
     }
 
@@ -114,14 +152,7 @@ export default class UI {
     }
 
     #handleSendText() {
-        if (textInput.value) {
-            // normalize line endings
-            const text = textInput.value.replace(/\r\n?/g, "\n");
-            this.#inputController.keyboardText(text);
-            this.#updateTextInput("");
-        } else {
-            history.back();
-        }
+        history.back();
     }
 
     #showScene(scene) {
@@ -165,9 +196,28 @@ export default class UI {
 
     showTextInput() {
         this.#showScene(textInputScene);
-        this.#updateTextInput(sessionStorage.getItem("text-input") || "");
+        this.#oldValue = "\n";
+        this.#updateTextInput("\n");
         if (history.state != "text-input") {
             history.pushState("text-input", "");
+        }
+    }
+
+    focusKeyboard() {
+        if (document.activeElement === keysTextarea) {
+            keysTextarea.blur();
+        } else {
+            this.#oldValue = "\n";
+            keysTextarea.value = "\n";
+            keysTextarea.focus();
+        }
+    }
+
+    showSystemControls() {
+        const systemControlsScene = document.getElementById("system-controls");
+        this.#showScene(systemControlsScene);
+        if (history.state != "system-controls") {
+            history.pushState("system-controls", "");
         }
     }
 
@@ -192,8 +242,10 @@ export default class UI {
             this.showKeys(history.state.substr("keys:".length));
         } else if (history.state == "text-input") {
             this.showTextInput();
+        } else if (history.state == "system-controls") {
+            this.showSystemControls();
         } else {
-            this.#showScene(padScene);
+            this.showKeys("", 0);
         }
     }
 }

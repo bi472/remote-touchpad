@@ -34,6 +34,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -57,6 +58,11 @@ type portalController struct {
 	bus           *dbus.Conn
 	portalDesktop dbus.BusObject
 	sessionHandle dbus.ObjectPath
+
+	kdeLayoutsActive bool
+	kdeLayoutsObj    dbus.BusObject
+	englishIndex     int
+	russianIndex     int
 }
 
 func init() {
@@ -192,8 +198,42 @@ func InitPortalController() (Controller, error) {
 		return nil, errors.New("keyboard or pointer access denied")
 	}
 	cleanupBus = false
-	return &portalController{bus: bus, portalDesktop: portalDesktop,
-		sessionHandle: sessionHandle}, nil
+
+	var kdeLayoutsActive bool
+	var kdeLayoutsObj dbus.BusObject
+	englishIndex := -1
+	russianIndex := -1
+
+	kdeLayoutsObj = bus.Object("org.kde.keyboard", "/Layouts")
+	var rawLayouts [][]interface{}
+	err = kdeLayoutsObj.Call("org.kde.KeyboardLayouts.getLayoutsList", 0).Store(&rawLayouts)
+	if err == nil {
+		kdeLayoutsActive = true
+		for i, layout := range rawLayouts {
+			if len(layout) > 0 {
+				name, ok := layout[0].(string)
+				if ok {
+					name = strings.ToLower(name)
+					if name == "us" || name == "en" || name == "eng" || name == "gb" {
+						englishIndex = i
+					} else if name == "ru" {
+						russianIndex = i
+					}
+				}
+			}
+		}
+		log.Printf("Detected KDE Keyboard Layouts: englishIndex=%d, russianIndex=%d", englishIndex, russianIndex)
+	}
+
+	return &portalController{
+		bus:              bus,
+		portalDesktop:    portalDesktop,
+		sessionHandle:    sessionHandle,
+		kdeLayoutsActive: kdeLayoutsActive,
+		kdeLayoutsObj:    kdeLayoutsObj,
+		englishIndex:     englishIndex,
+		russianIndex:     russianIndex,
+	}, nil
 }
 
 func retrieveSecret(bus *dbus.Conn) ([]byte, error) {
@@ -324,15 +364,53 @@ func (p *portalController) keyboardKeys(keys []Keysym) error {
 }
 
 func (p *portalController) KeyboardText(text string) error {
-	keys := make([]Keysym, 0, len(text))
+	var currentChunk []Keysym
+	var chunkLang int // 0 = other/neutral, 1 = English, 2 = Russian
+
+	sendChunk := func(keys []Keysym, lang int) error {
+		if len(keys) == 0 {
+			return nil
+		}
+		if p.kdeLayoutsActive {
+			var currentLayout uint32
+			err := p.kdeLayoutsObj.Call("org.kde.KeyboardLayouts.getLayout", 0).Store(&currentLayout)
+			if err == nil {
+				if lang == 2 && p.russianIndex >= 0 && int(currentLayout) != p.russianIndex {
+					p.kdeLayoutsObj.Call("org.kde.KeyboardLayouts.setLayout", 0, uint32(p.russianIndex))
+				} else if lang == 1 && p.englishIndex >= 0 && int(currentLayout) != p.englishIndex {
+					p.kdeLayoutsObj.Call("org.kde.KeyboardLayouts.setLayout", 0, uint32(p.englishIndex))
+				}
+			}
+		}
+		return p.keyboardKeys(keys)
+	}
+
 	for _, runeValue := range text {
+		lang := 0
+		if runeValue >= 0x0400 && runeValue <= 0x04FF {
+			lang = 2
+		} else if (runeValue >= 'a' && runeValue <= 'z') || (runeValue >= 'A' && runeValue <= 'Z') {
+			lang = 1
+		}
+
+		if len(currentChunk) > 0 && lang != 0 && chunkLang != 0 && lang != chunkLang {
+			if err := sendChunk(currentChunk, chunkLang); err != nil {
+				return err
+			}
+			currentChunk = nil
+		}
+
 		keysym, err := RuneToKeysym(runeValue)
 		if err != nil {
 			return err
 		}
-		keys = append(keys, keysym)
+		currentChunk = append(currentChunk, keysym)
+		if lang != 0 {
+			chunkLang = lang
+		}
 	}
-	return p.keyboardKeys(keys)
+
+	return sendChunk(currentChunk, chunkLang)
 }
 
 func (p *portalController) KeyboardKey(key Key) error {

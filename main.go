@@ -35,6 +35,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -71,7 +72,32 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 		if !utf8.ValidString(text) {
 			return errors.New("invalid utf-8")
 		}
+		log.Printf("processCommand: typing text %q", text)
 		return controller.KeyboardText(text)
+	}
+	if command[0] == 'c' {
+		action := command[1:]
+		if action == "sleep" {
+			log.Printf("Executing sleep command...")
+			cmd := exec.Command("systemctl", "suspend")
+			return cmd.Run()
+		}
+		if action == "display-profiles" {
+			log.Printf("Executing display-profiles script...")
+			cmd := exec.Command("/home/fnder77/.local/bin/display-profiles.sh")
+			return cmd.Run()
+		}
+		if action == "display-profiles-extended" {
+			log.Printf("Executing display-profiles-extended script...")
+			cmd := exec.Command("/home/fnder77/.local/bin/display-profiles-extended.sh")
+			return cmd.Run()
+		}
+		if action == "display-profiles-huawei-only" {
+			log.Printf("Executing display-profiles-huawei-only script...")
+			cmd := exec.Command("/home/fnder77/.local/bin/display-profiles-huawei-only.sh")
+			return cmd.Run()
+		}
+		return errors.New("unknown custom action")
 	}
 	arguments := strings.Split(command[1:], ";")
 	if command[0] == 'k' && len(arguments) != 1 ||
@@ -161,9 +187,9 @@ func main() {
 	flag.StringVar(&keyFile, "key", "", "file containing TLS private key")
 	flag.UintVar(&config.UpdateRate, "update-rate", 30, "number of updates per second")
 	flag.Float64Var(&config.MoveSpeed, "move-speed", 1, "move speed multiplier")
-	flag.Float64Var(&config.ScrollSpeed, "scroll-speed", 1, "scroll speed multiplier")
+	flag.Float64Var(&config.ScrollSpeed, "scroll-speed", 0.3, "scroll speed multiplier")
 	flag.Float64Var(&config.MouseMoveSpeed, "mouse-move-speed", 1, "mouse move speed multiplier")
-	flag.Float64Var(&config.MouseScrollSpeed, "mouse-scroll-speed", 1, "mouse scroll speed multiplier")
+	flag.Float64Var(&config.MouseScrollSpeed, "mouse-scroll-speed", 0.3, "mouse scroll speed multiplier")
 	flag.Parse()
 	if showVersion {
 		fmt.Println(version)
@@ -228,6 +254,32 @@ func main() {
 	}
 	port := addr.Port
 	mux := http.NewServeMux()
+	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
+		fmt.Fprintf(w, `{
+  "name": "Remote Touchpad",
+  "short_name": "Touchpad",
+  "start_url": "/#%s",
+  "display": "standalone",
+  "background_color": "#404040",
+  "theme_color": "#404040",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ]
+}`, secret)
+	})
 	mux.Handle("/", http.FileServer(http.FS(webdataFS)))
 	mux.Handle("/ws", websocket.Handler(func(ws *websocket.Conn) {
 		var message string

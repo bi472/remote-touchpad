@@ -26,17 +26,32 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bendahl/uinput"
+	"github.com/godbus/dbus/v5"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
 const shiftKeysDelay time.Duration = 50 * time.Millisecond
 
+var cyrillicToQwerty = map[rune]rune{
+	'й': 'q', 'ц': 'w', 'у': 'e', 'к': 'r', 'е': 't', 'н': 'y', 'г': 'u', 'ш': 'i', 'щ': 'o', 'з': 'p', 'х': '[', 'ъ': ']',
+	'ф': 'a', 'ы': 's', 'в': 'd', 'а': 'f', 'п': 'g', 'р': 'h', 'о': 'j', 'л': 'k', 'д': 'l', 'ж': ';', 'э': '\'',
+	'я': 'z', 'ч': 'x', 'с': 'c', 'м': 'v', 'и': 'b', 'т': 'n', 'ь': 'm', 'б': ',', 'ю': '.', 'ё': '`',
+	'Й': 'Q', 'Ц': 'W', 'У': 'E', 'К': 'R', 'Е': 'T', 'Н': 'Y', 'Г': 'U', 'Ш': 'I', 'Щ': 'O', 'З': 'P', 'Х': '{', 'Ъ': '}',
+	'Ф': 'A', 'Ы': 'S', 'В': 'D', 'А': 'F', 'П': 'G', 'Р': 'H', 'О': 'J', 'Л': 'K', 'Д': 'L', 'Ж': ':', 'Э': '"',
+	'Я': 'Z', 'Ч': 'X', 'С': 'C', 'М': 'V', 'И': 'B', 'Т': 'N', 'Ь': 'M', 'Б': '<', 'Ю': '>', 'Ё': '~',
+}
+
 type uinputController struct {
-	keymap   *Keymap
-	keyboard uinput.Keyboard
-	mouse    uinput.Mouse
+	keymap           *Keymap
+	keyboard         uinput.Keyboard
+	mouse            uinput.Mouse
+	kdeLayoutsActive bool
+	kdeLayoutsObj    dbus.BusObject
+	englishIndex     int
+	russianIndex     int
 }
 
 func init() {
@@ -70,7 +85,45 @@ func InitUinputController() (Controller, error) {
 	if !keymapSet {
 		log.Print("Hint: Set the keyboard mapping with the REMOTE_TOUCHPAD_UINPUT_KEYMAP environment variable")
 	}
-	return &uinputController{keymap, keyboard, mouse}, nil
+
+	var kdeLayoutsActive bool
+	var kdeLayoutsObj dbus.BusObject
+	englishIndex := -1
+	russianIndex := -1
+
+	bus, err := dbus.SessionBus()
+	if err == nil {
+		kdeLayoutsObj = bus.Object("org.kde.keyboard", "/Layouts")
+		var rawLayouts [][]interface{}
+		err = kdeLayoutsObj.Call("org.kde.KeyboardLayouts.getLayoutsList", 0).Store(&rawLayouts)
+		if err == nil {
+			kdeLayoutsActive = true
+			for i, layout := range rawLayouts {
+				if len(layout) > 0 {
+					name, ok := layout[0].(string)
+					if ok {
+						name = strings.ToLower(name)
+						if name == "us" || name == "en" || name == "eng" || name == "gb" {
+							englishIndex = i
+						} else if name == "ru" {
+							russianIndex = i
+						}
+					}
+				}
+			}
+			log.Printf("uinput: Detected KDE Keyboard Layouts: englishIndex=%d, russianIndex=%d", englishIndex, russianIndex)
+		}
+	}
+
+	return &uinputController{
+		keymap:           keymap,
+		keyboard:         keyboard,
+		mouse:            mouse,
+		kdeLayoutsActive: kdeLayoutsActive,
+		kdeLayoutsObj:    kdeLayoutsObj,
+		englishIndex:     englishIndex,
+		russianIndex:     russianIndex,
+	}, nil
 }
 
 func (p *uinputController) Close() error {
@@ -110,11 +163,38 @@ func (p *uinputController) KeyboardText(text string) error {
 		}
 		return nil
 	}
+	if p.kdeLayoutsActive {
+		hasRussian := false
+		hasEnglish := false
+		for _, runeValue := range text {
+			if runeValue >= 0x0400 && runeValue <= 0x04FF {
+				hasRussian = true
+			} else if (runeValue >= 'a' && runeValue <= 'z') || (runeValue >= 'A' && runeValue <= 'Z') {
+				hasEnglish = true
+			}
+		}
+		if hasRussian || hasEnglish {
+			var currentLayout uint32
+			err := p.kdeLayoutsObj.Call("org.kde.KeyboardLayouts.getLayout", 0).Store(&currentLayout)
+			if err == nil {
+				if hasRussian && p.russianIndex >= 0 && int(currentLayout) != p.russianIndex {
+					p.kdeLayoutsObj.Call("org.kde.KeyboardLayouts.setLayout", 0, uint32(p.russianIndex))
+				} else if hasEnglish && p.englishIndex >= 0 && int(currentLayout) != p.englishIndex {
+					p.kdeLayoutsObj.Call("org.kde.KeyboardLayouts.setLayout", 0, uint32(p.englishIndex))
+				}
+			}
+		}
+	}
+
 	defer updateShiftKeys(KeyCombo{})
 	for _, runeValue := range text {
+		origRune := runeValue
+		if mapped, found := cyrillicToQwerty[runeValue]; found {
+			runeValue = mapped
+		}
 		keyCombo, found := p.keymap.Get(runeValue)
 		if !found {
-			return fmt.Errorf("unsupported rune: %q", runeValue)
+			return fmt.Errorf("unsupported rune: %q", origRune)
 		}
 		if err := updateShiftKeys(keyCombo); err != nil {
 			return err

@@ -63,6 +63,11 @@ window.app = {
     focusKeyboard: ui.focusKeyboard.bind(ui),
     showSystemControls: ui.showSystemControls.bind(ui),
     customAction: inputController.customAction.bind(inputController),
+    startSleepTimer: () => {
+        const val = parseInt(document.getElementById('sleep-timer-input').value, 10);
+        if (isNaN(val) || val <= 0) return;
+        inputController.customAction(`sleep-timer:${val}`);
+    },
 };
 for (const name in inputcontrollerModule) {
     if (name.startsWith("KEY_")) {

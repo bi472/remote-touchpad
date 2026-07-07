@@ -111,5 +111,25 @@
     <div style="display: flex; flex-direction: column; gap: 1rem; width: 85%; align-items: stretch;">
         <button style="height: 3.5rem; font-size: 1.1rem; width: 100%; font-family: sans-serif; display: flex; align-items: center; justify-content: center; gap: 0.5rem;" onclick="app.customAction('display-profiles')">🖥️ Profiles</button>
         <button style="height: 3.5rem; font-size: 1.1rem; width: 100%; font-family: sans-serif; background-color: #8b0000; border-color: #ff0000; display: flex; align-items: center; justify-content: center; gap: 0.5rem;" onclick="app.customAction('sleep')">⏻ Sleep</button>
+        <!-- Sleep Timer Container -->
+        <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 1rem; border-radius: 0.5rem; display: flex; flex-direction: column; gap: 0.8rem; font-family: sans-serif;">
+            <div style="color: #ccc; font-size: 0.95rem; text-align: center; font-weight: bold;">⏱️ Sleep Timer</div>
+            
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <input id="sleep-timer-input" type="number" value="30" min="1" max="1440" style="flex: 1; height: 2.5rem; border-radius: 0.25rem; border: 1px solid #555; background: #222; color: #fff; text-align: center; font-size: 1.2rem;">
+                <span style="color: #bbb; font-size: 0.9rem;">min</span>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; justify-content: space-between;">
+                <button style="flex: 1; height: 2.2rem; background: #333; border: 1px solid #555; color: #fff; border-radius: 0.25rem; font-size: 0.9rem;" onclick="document.getElementById('sleep-timer-input').value = 15">15</button>
+                <button style="flex: 1; height: 2.2rem; background: #333; border: 1px solid #555; color: #fff; border-radius: 0.25rem; font-size: 0.9rem;" onclick="document.getElementById('sleep-timer-input').value = 45">45</button>
+                <button style="flex: 1; height: 2.2rem; background: #333; border: 1px solid #555; color: #fff; border-radius: 0.25rem; font-size: 0.9rem;" onclick="document.getElementById('sleep-timer-input').value = 60">60</button>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.2rem;">
+                <button style="flex: 1; height: 2.8rem; background: #2e7d32; border: none; color: #fff; border-radius: 0.25rem; font-weight: bold; font-size: 1rem;" onclick="app.startSleepTimer()">Start</button>
+                <button style="flex: 1; height: 2.8rem; background: #c62828; border: none; color: #fff; border-radius: 0.25rem; font-weight: bold; font-size: 1rem;" onclick="app.customAction('cancel-sleep-timer')">Cancel</button>
+            </div>
+        </div>
     </div>
 </div>

@@ -97,6 +97,29 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 			cmd := exec.Command("/home/fnder77/.local/bin/display-profiles-huawei-only.sh")
 			return cmd.Run()
 		}
+		if action == "cancel-sleep-timer" {
+			log.Printf("Cancelling sleep timer...")
+			cmd := exec.Command("pkill", "-f", "sleep_timer.sh")
+			return cmd.Run()
+		}
+		if strings.HasPrefix(action, "sleep-timer:") {
+			parts := strings.Split(action, ":")
+			if len(parts) == 2 {
+				val := parts[1]
+				log.Printf("Starting sleep timer for %s minutes...", val)
+				exec.Command("pkill", "-f", "sleep_timer.sh").Run()
+				cmd := exec.Command("/home/fnder77/Проекты/sleep_timer.sh", val)
+				err := cmd.Start()
+				if err != nil {
+					log.Printf("Error starting sleep timer: %v", err)
+					return err
+				}
+				go func() {
+					cmd.Wait()
+				}()
+				return nil
+			}
+		}
 		return errors.New("unknown custom action")
 	}
 	arguments := strings.Split(command[1:], ";")

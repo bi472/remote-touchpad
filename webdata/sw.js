@@ -1,4 +1,4 @@
-const CACHE_NAME = 'remote-touchpad-v3';
+const CACHE_NAME = 'remote-touchpad-v4';
 const ASSETS = [
   './',
   './index.html',

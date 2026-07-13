@@ -76,6 +76,12 @@ window.app = {
     focusKeyboard: ui.focusKeyboard.bind(ui),
     showSystemControls: ui.showSystemControls.bind(ui),
     customAction: inputController.customAction.bind(inputController),
+    openMediaSelectorModal: () => {
+        document.getElementById('media-selector-modal').classList.remove('hidden');
+    },
+    closeMediaSelectorModal: () => {
+        document.getElementById('media-selector-modal').classList.add('hidden');
+    },
     openSleepTimerModal: () => {
         document.getElementById('sleep-timer-modal').classList.remove('hidden');
         window.app.selectTimerPreset(30);

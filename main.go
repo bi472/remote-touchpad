@@ -100,7 +100,9 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 		}
 		if action == "open-mpv" {
 			log.Printf("Opening mpv...")
-			cmd := exec.Command("mpv", "--fs")
+			cmd := exec.Command("mpv", "--idle", "--fs")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
 			err := cmd.Start()
 			if err != nil {
 				log.Printf("Error starting mpv: %v", err)
@@ -114,6 +116,8 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 		if action == "open-youtube" {
 			log.Printf("Opening YouTube...")
 			cmd := exec.Command("xdg-open", "https://youtube.com")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
 			err := cmd.Start()
 			if err != nil {
 				log.Printf("Error opening YouTube: %v", err)

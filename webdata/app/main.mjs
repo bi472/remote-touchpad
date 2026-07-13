@@ -45,8 +45,12 @@ if ('serviceWorker' in navigator) {
 
 socket.addEventListener("config", (event) => {
     const config = event.detail;
-    inputController.configure(config);
-    ui.configure(config);
+    if (config.type === "media-state") {
+        window.app.handleMediaState(config);
+    } else {
+        inputController.configure(config);
+        ui.configure(config);
+    }
 });
 
 socket.addEventListener("close", () => {
@@ -90,6 +94,73 @@ window.app = {
             inputController.customAction(`sleep-timer:${val}`);
         }
         window.app.closeSleepTimerModal();
+    },
+    handleMediaState: (state) => {
+        if (!state.active) {
+            if (history.state === "media-controls") {
+                history.back();
+            }
+            return;
+        }
+        
+        if (history.state !== "media-controls") {
+            ui.showMediaControls();
+        }
+
+        document.getElementById('media-title').textContent = state.title || "Streaming Audio/Video";
+
+        const formatTime = (sec) => {
+            if (isNaN(sec) || sec < 0) return "00:00";
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            const s = Math.floor(sec % 60);
+            return (h > 0 ? (h + ":" + String(m).padStart(2, '0')) : String(m).padStart(2, '0')) + ":" + String(s).padStart(2, '0');
+        };
+
+        document.getElementById('media-time-pos').textContent = formatTime(state.position);
+        document.getElementById('media-time-dur').textContent = formatTime(state.duration);
+
+        const progressSlider = document.getElementById('media-progress');
+        if (document.activeElement !== progressSlider) {
+            const percent = state.duration > 0 ? (state.position / state.duration) * 100 : 0;
+            progressSlider.value = percent;
+        }
+
+        document.getElementById('media-play-pause-btn').textContent = state.paused ? "▶" : "⏸";
+
+        const volumeSlider = document.getElementById('media-volume');
+        if (document.activeElement !== volumeSlider) {
+            volumeSlider.value = state.volume;
+            document.getElementById('media-volume-val').textContent = Math.round(state.volume) + "%";
+        }
+
+        const select = document.getElementById('media-audio-sink');
+        if (document.activeElement !== select) {
+            select.innerHTML = '<option value="">Default Sink</option>';
+            if (state.sinks && state.sinks.length > 0) {
+                state.sinks.forEach(sink => {
+                    const opt = document.createElement('option');
+                    opt.value = sink;
+                    let name = sink;
+                    if (name.startsWith('alsa_output.')) name = name.substring('alsa_output.'.length);
+                    opt.textContent = name;
+                    opt.selected = (sink === state.current_sink);
+                    select.appendChild(opt);
+                });
+            }
+        }
+    },
+    mediaSeekSliderInput: (value) => {
+        inputController.customAction(`mpv:seek-to:${value}`);
+    },
+    mediaVolumeSliderInput: (value) => {
+        document.getElementById('media-volume-val').textContent = value + "%";
+        inputController.customAction(`mpv:volume:${value}`);
+    },
+    mediaAudioSinkChange: (value) => {
+        if (value) {
+            inputController.customAction(`audio:set-sink:${value}`);
+        }
     },
 };
 for (const name in inputcontrollerModule) {

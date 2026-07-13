@@ -20,10 +20,12 @@
 package main
 
 import (
+	"bufio"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -38,6 +40,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -99,7 +102,8 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 		}
 		if action == "open-mpv" {
 			log.Printf("Opening mpv...")
-			cmd := exec.Command("mpv")
+			os.Remove("/tmp/mpv-socket")
+			cmd := exec.Command("mpv", "--input-ipc-server=/tmp/mpv-socket", "--fs")
 			err := cmd.Start()
 			if err != nil {
 				log.Printf("Error starting mpv: %v", err)
@@ -109,6 +113,40 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 				cmd.Wait()
 			}()
 			return nil
+		}
+		if action == "mpv:play-pause" {
+			return sendMpvCommand(`{"command":["cycle","pause"]}`)
+		}
+		if strings.HasPrefix(action, "mpv:seek:") {
+			secs := action[len("mpv:seek:"):]
+			return sendMpvCommand(fmt.Sprintf(`{"command":["seek",%s]}`, secs))
+		}
+		if strings.HasPrefix(action, "mpv:seek-to:") {
+			percent := action[len("mpv:seek-to:"):]
+			return sendMpvCommand(fmt.Sprintf(`{"command":["seek",%s,"absolute-percent"]}`, percent))
+		}
+		if strings.HasPrefix(action, "mpv:volume:") {
+			vol := action[len("mpv:volume:"):]
+			return sendMpvCommand(fmt.Sprintf(`{"command":["set_property","volume",%s]}`, vol))
+		}
+		if action == "mpv:playlist:next" {
+			return sendMpvCommand(`{"command":["playlist-next"]}`)
+		}
+		if action == "mpv:playlist:prev" {
+			return sendMpvCommand(`{"command":["playlist-prev"]}`)
+		}
+		if strings.HasPrefix(action, "audio:set-sink:") {
+			sink := action[len("audio:set-sink:"):]
+			log.Printf("Setting default audio sink to: %s", sink)
+			cmd := exec.Command("pactl", "set-default-sink", sink)
+			err := cmd.Run()
+			if err == nil {
+				mediaStateMu.Lock()
+				mediaState.Sinks, mediaState.CurrentSink = fetchAudioSinks()
+				broadcastMessage(mediaState)
+				mediaStateMu.Unlock()
+			}
+			return err
 		}
 		if action == "cancel-sleep-timer" {
 			log.Printf("Cancelling sleep timer...")
@@ -267,6 +305,7 @@ func main() {
 		log.Fatal(fmt.Errorf("unsupported platform:\n%w", errors.Join(platformErrs...)))
 	}
 	defer controller.Close()
+	go startMpvIpcManager()
 	authenticationChallenges := make(chan challenge, authenticationRateBurst)
 	go authenticationChallengeGenerator(secret, authenticationChallenges)
 	listener, err := net.Listen("tcp", bind)
@@ -327,7 +366,19 @@ func main() {
 		if !challenge.verify(message) {
 			return
 		}
+		wsClientsMu.Lock()
+		wsClients[ws] = true
+		wsClientsMu.Unlock()
+		defer func() {
+			wsClientsMu.Lock()
+			delete(wsClients, ws)
+			wsClientsMu.Unlock()
+		}()
+
 		websocket.JSON.Send(ws, config)
+		mediaStateMu.Lock()
+		websocket.JSON.Send(ws, mediaState)
+		mediaStateMu.Unlock()
 		for {
 			if err := websocket.Message.Receive(ws, &message); err != nil {
 				return
@@ -363,4 +414,159 @@ func main() {
 		err = http.Serve(listener, mux)
 	}
 	log.Fatal(err)
+}
+
+type MediaState struct {
+	Type        string   `json:"type"`
+	Title       string   `json:"title"`
+	Position    float64  `json:"position"`
+	Duration    float64  `json:"duration"`
+	Paused      bool     `json:"paused"`
+	Volume      float64  `json:"volume"`
+	Sinks       []string `json:"sinks"`
+	CurrentSink string   `json:"current_sink"`
+	Active      bool     `json:"active"`
+}
+
+var (
+	wsClientsMu sync.Mutex
+	wsClients   = make(map[*websocket.Conn]bool)
+	mediaState   MediaState
+	mediaStateMu sync.Mutex
+	mpvConn      net.Conn
+	mpvConnMu    sync.Mutex
+)
+
+func broadcastMessage(msg interface{}) {
+	wsClientsMu.Lock()
+	defer wsClientsMu.Unlock()
+	for ws := range wsClients {
+		websocket.JSON.Send(ws, msg)
+	}
+}
+
+func sendMpvCommand(cmdStr string) error {
+	mpvConnMu.Lock()
+	defer mpvConnMu.Unlock()
+	if mpvConn == nil {
+		return errors.New("mpv not connected")
+	}
+	_, err := mpvConn.Write([]byte(cmdStr + "\n"))
+	return err
+}
+
+func fetchAudioSinks() ([]string, string) {
+	sinks := []string{}
+	currentSink := ""
+
+	out, err := exec.Command("pactl", "get-default-sink").Output()
+	if err == nil {
+		currentSink = strings.TrimSpace(string(out))
+	}
+
+	outSinks, err := exec.Command("pactl", "list", "short", "sinks").Output()
+	if err == nil {
+		lines := strings.Split(string(outSinks), "\n")
+		for _, line := range lines {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				sinks = append(sinks, parts[1])
+			}
+		}
+	}
+	return sinks, currentSink
+}
+
+func startMpvIpcManager() {
+	for {
+		time.Sleep(1 * time.Second)
+
+		conn, err := net.Dial("unix", "/tmp/mpv-socket")
+		if err != nil {
+			mediaStateMu.Lock()
+			if mediaState.Active {
+				mediaState = MediaState{Type: "media-state", Active: false}
+				broadcastMessage(mediaState)
+			}
+			mediaStateMu.Unlock()
+			continue
+		}
+
+		log.Printf("Connected to MPV IPC socket")
+		mpvConnMu.Lock()
+		mpvConn = conn
+		mpvConnMu.Unlock()
+
+		mediaStateMu.Lock()
+		mediaState = MediaState{Type: "media-state", Active: true}
+		mediaState.Sinks, mediaState.CurrentSink = fetchAudioSinks()
+		mediaStateMu.Unlock()
+
+		observers := []string{
+			`{"command":["observe_property",1,"media-title"]}`,
+			`{"command":["observe_property",2,"time-pos"]}`,
+			`{"command":["observe_property",3,"duration"]}`,
+			`{"command":["observe_property",4,"pause"]}`,
+			`{"command":["observe_property",5,"volume"]}`,
+		}
+		for _, obs := range observers {
+			conn.Write([]byte(obs + "\n"))
+		}
+
+		reader := bufio.NewReader(conn)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				break
+			}
+
+			var event map[string]interface{}
+			if err := json.Unmarshal([]byte(line), &event); err == nil {
+				if eventName, ok := event["event"].(string); ok && eventName == "property-change" {
+					name, _ := event["name"].(string)
+					data := event["data"]
+
+					mediaStateMu.Lock()
+					switch name {
+					case "media-title":
+						if val, ok := data.(string); ok {
+							mediaState.Title = val
+						}
+					case "time-pos":
+						if val, ok := data.(float64); ok {
+							mediaState.Position = val
+						}
+					case "duration":
+						if val, ok := data.(float64); ok {
+							mediaState.Duration = val
+						}
+					case "pause":
+						if val, ok := data.(bool); ok {
+							mediaState.Paused = val
+						}
+					case "volume":
+						if val, ok := data.(float64); ok {
+							mediaState.Volume = val
+						}
+					}
+					mediaState.Sinks, mediaState.CurrentSink = fetchAudioSinks()
+					broadcastMessage(mediaState)
+					mediaStateMu.Unlock()
+				}
+			}
+		}
+
+		mpvConnMu.Lock()
+		if mpvConn != nil {
+			mpvConn.Close()
+			mpvConn = nil
+		}
+		mpvConnMu.Unlock()
+
+		mediaStateMu.Lock()
+		mediaState = MediaState{Type: "media-state", Active: false}
+		broadcastMessage(mediaState)
+		mediaStateMu.Unlock()
+		log.Printf("Disconnected from MPV IPC socket")
+	}
 }

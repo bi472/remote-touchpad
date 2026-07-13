@@ -25,6 +25,7 @@
     <p class="background">Touchpad</p>
     <button class="top left" onclick="app.showKeys()">≡</button>
     <button class="top right" onclick="app.showSystemControls()">⚙</button>
+    <button style="position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); height: 3rem; padding: 0 1.2rem; border-radius: 0.5rem; background: rgba(0, 0, 0, 0.5); border: 1px solid #444; color: #fff; font-family: sans-serif; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 0.4rem; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 10;" onclick="app.customAction('open-mpv')">🎬 Open MPV</button>
     <button class="bottom left visible-if-fullscreen-enabled" onclick="app.toggleFullscreen()">⤢</button>
     <button class="bottom right" onclick="app.showTextInput()">⌨</button>
 </div>
@@ -145,6 +146,54 @@
                 <button style="flex: 1; height: 2.8rem; background: #2e7d32; border: none; color: #fff; border-radius: 0.4rem; font-weight: bold; font-size: 1rem;" onclick="app.confirmSleepTimer()">Confirm</button>
                 <button style="flex: 1; height: 2.8rem; background: #c62828; border: none; color: #fff; border-radius: 0.4rem; font-weight: bold; font-size: 1rem;" onclick="app.customAction('cancel-sleep-timer'); app.closeSleepTimerModal();">Cancel Timer</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<div id="media-controls" class="scene touch-input mouse-input keyboard-input allow-fullscreen hidden" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; background: #181819; z-index: 999; width: 100%; height: 100%; position: absolute; top: 0; left: 0;">
+    <p class="background" style="font-size: 12vh; opacity: 0.03; font-family: sans-serif;">MPV</p>
+    <button class="top left" onclick="app.showSystemControls()">⯇</button>
+    
+    <div style="width: 85%; max-width: 360px; display: flex; flex-direction: column; gap: 1.5rem; font-family: sans-serif;">
+        <!-- Marquee / Track Name -->
+        <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.75rem; padding: 1rem; text-align: center;">
+            <div style="color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.4rem;">Now Playing</div>
+            <div id="media-title" style="color: #fff; font-size: 1.1rem; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">Waiting for MPV...</div>
+        </div>
+
+        <!-- Scrubber Progress -->
+        <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+            <input id="media-progress" type="range" min="0" max="100" value="0" style="width: 100%; height: 6px; border-radius: 3px; background: #333; accent-color: #007acc; cursor: pointer; outline: none;" oninput="app.mediaSeekSliderInput(this.value)">
+            <div style="display: flex; justify-content: space-between; color: #aaa; font-size: 0.85rem;">
+                <span id="media-time-pos">00:00</span>
+                <span id="media-time-dur">00:00</span>
+            </div>
+        </div>
+
+        <!-- Media Playback Buttons -->
+        <div style="display: flex; justify-content: space-around; align-items: center; margin: 0.5rem 0;">
+            <button style="width: 3rem; height: 3rem; border-radius: 50%; background: #252526; border: 1px solid #444; color: #fff; font-size: 1.2rem;" onclick="app.customAction('mpv:playlist:prev')">⏮</button>
+            <button style="width: 3.5rem; height: 3.5rem; border-radius: 50%; background: #252526; border: 1px solid #444; color: #fff; font-size: 1.3rem;" onclick="app.customAction('mpv:seek:-10')">⏪</button>
+            <button id="media-play-pause-btn" style="width: 5rem; height: 5rem; border-radius: 50%; background: #007acc; border: none; color: #fff; font-size: 2rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(0,122,204,0.4);" onclick="app.customAction('mpv:play-pause')">▶</button>
+            <button style="width: 3.5rem; height: 3.5rem; border-radius: 50%; background: #252526; border: 1px solid #444; color: #fff; font-size: 1.3rem;" onclick="app.customAction('mpv:seek:10')">⏩</button>
+            <button style="width: 3rem; height: 3rem; border-radius: 50%; background: #252526; border: 1px solid #444; color: #fff; font-size: 1.2rem;" onclick="app.customAction('mpv:playlist:next')">⏭</button>
+        </div>
+
+        <!-- Volume Range Control -->
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); padding: 1rem; border-radius: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; color: #ccc; font-size: 0.9rem; font-weight: bold;">
+                <span>🔊 Volume</span>
+                <span id="media-volume-val">80%</span>
+            </div>
+            <input id="media-volume" type="range" min="0" max="130" value="80" style="width: 100%; height: 6px; border-radius: 3px; background: #333; accent-color: #007acc; cursor: pointer; outline: none;" oninput="app.mediaVolumeSliderInput(this.value)">
+        </div>
+
+        <!-- Audio Output Device Control -->
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); padding: 1rem; border-radius: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <div style="color: #ccc; font-size: 0.9rem; font-weight: bold;">🔈 Audio Output</div>
+            <select id="media-audio-sink" style="width: 100%; height: 2.5rem; background: #252526; border: 1px solid #444; border-radius: 0.4rem; color: #fff; padding: 0 0.5rem; font-size: 0.95rem; outline: none; cursor: pointer;" onchange="app.mediaAudioSinkChange(this.value)">
+                <option value="">Default Sink</option>
+            </select>
         </div>
     </div>
 </div>

@@ -221,6 +221,14 @@ export default class UI {
         }
     }
 
+    showMediaControls() {
+        const mediaControlsScene = document.getElementById("media-controls");
+        this.#showScene(mediaControlsScene);
+        if (history.state != "media-controls") {
+            history.pushState("media-controls", "");
+        }
+    }
+
     toggleFullscreen() {
         if (compat.fullscreenElement()) {
             compat.exitFullscreen();
@@ -244,6 +252,8 @@ export default class UI {
             this.showTextInput();
         } else if (history.state == "system-controls") {
             this.showSystemControls();
+        } else if (history.state == "media-controls") {
+            this.showMediaControls();
         } else {
             this.showKeys("", 0);
         }

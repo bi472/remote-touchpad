@@ -75,6 +75,7 @@ window.app = {
     setKeysPage: ui.setKeysPage.bind(ui),
     focusKeyboard: ui.focusKeyboard.bind(ui),
     showSystemControls: ui.showSystemControls.bind(ui),
+    showMediaControls: ui.showMediaControls.bind(ui),
     customAction: inputController.customAction.bind(inputController),
     openMediaSelectorModal: () => {
         document.getElementById('media-selector-modal').classList.remove('hidden');
@@ -119,7 +120,7 @@ window.app = {
         }
         
         if (history.state !== "media-controls") {
-            ui.showMediaControls();
+            return;
         }
 
         document.getElementById('media-title').textContent = state.title || "Streaming Audio/Video";

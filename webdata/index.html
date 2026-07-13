@@ -207,8 +207,9 @@
         </div>
         
         <div style="display: flex; flex-direction: column; gap: 0.8rem;">
-            <button style="height: 3.2rem; background: #007acc; border: none; color: #fff; border-radius: 0.4rem; font-size: 1.05rem; font-weight: bold; cursor: pointer;" onclick="app.customAction('open-mpv'); app.closeMediaSelectorModal();">🎬 Fullscreen MPV</button>
-            <button style="height: 3.2rem; background: #c62828; border: none; color: #fff; border-radius: 0.4rem; font-size: 1.05rem; font-weight: bold; cursor: pointer;" onclick="app.customAction('open-youtube'); app.closeMediaSelectorModal();">📺 YouTube on Host</button>
+            <button style="height: 3.2rem; background: #007acc; border: none; color: #fff; border-radius: 0.4rem; font-size: 1.05rem; font-weight: bold; cursor: pointer;" onclick="app.customAction('open-mpv'); app.showMediaControls(); app.closeMediaSelectorModal();">🎬 Fullscreen MPV</button>
+            <button style="height: 3.2rem; background: #c62828; border: none; color: #fff; border-radius: 0.4rem; font-size: 1.05rem; font-weight: bold; cursor: pointer;" onclick="app.customAction('open-youtube'); app.showMediaControls(); app.closeMediaSelectorModal();">📺 YouTube on Host</button>
+            <button style="height: 3.2rem; background: #333; border: 1px solid #555; color: #fff; border-radius: 0.4rem; font-size: 1.05rem; font-weight: bold; cursor: pointer;" onclick="app.showMediaControls(); app.closeMediaSelectorModal();">🎵 Open Media Remote</button>
         </div>
     </div>
 </div>

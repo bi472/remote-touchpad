@@ -63,10 +63,33 @@ window.app = {
     focusKeyboard: ui.focusKeyboard.bind(ui),
     showSystemControls: ui.showSystemControls.bind(ui),
     customAction: inputController.customAction.bind(inputController),
-    startSleepTimer: () => {
-        const val = parseInt(document.getElementById('sleep-timer-input').value, 10);
-        if (isNaN(val) || val <= 0) return;
-        inputController.customAction(`sleep-timer:${val}`);
+    openSleepTimerModal: () => {
+        document.getElementById('sleep-timer-modal').classList.remove('hidden');
+        window.app.selectTimerPreset(30);
+    },
+    closeSleepTimerModal: () => {
+        document.getElementById('sleep-timer-modal').classList.add('hidden');
+    },
+    selectTimerPreset: (val) => {
+        document.getElementById('selected-timer-val').textContent = val;
+        const presets = [15, 30, 45, 60];
+        presets.forEach(p => {
+            const btn = document.getElementById(`timer-btn-${p}`);
+            if (p === val) {
+                btn.style.background = '#2a2a2a';
+                btn.style.border = '2px solid #007acc';
+            } else {
+                btn.style.background = '#333';
+                btn.style.border = '1px solid #555';
+            }
+        });
+    },
+    confirmSleepTimer: () => {
+        const val = parseInt(document.getElementById('selected-timer-val').textContent, 10);
+        if (!isNaN(val) && val > 0) {
+            inputController.customAction(`sleep-timer:${val}`);
+        }
+        window.app.closeSleepTimerModal();
     },
 };
 for (const name in inputcontrollerModule) {

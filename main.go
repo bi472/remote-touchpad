@@ -97,6 +97,19 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 			cmd := exec.Command("/home/fnder77/.local/bin/display-profiles-huawei-only.sh")
 			return cmd.Run()
 		}
+		if action == "open-mpv" {
+			log.Printf("Opening mpv...")
+			cmd := exec.Command("mpv")
+			err := cmd.Start()
+			if err != nil {
+				log.Printf("Error starting mpv: %v", err)
+				return err
+			}
+			go func() {
+				cmd.Wait()
+			}()
+			return nil
+		}
 		if action == "cancel-sleep-timer" {
 			log.Printf("Cancelling sleep timer...")
 			cmd := exec.Command("pkill", "-f", "sleep_timer.sh")

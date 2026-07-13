@@ -123,6 +123,20 @@ window.app = {
             return;
         }
 
+        const playerSelect = document.getElementById('media-player-select');
+        if (document.activeElement !== playerSelect) {
+            playerSelect.innerHTML = '<option value="">Default Player (Active)</option>';
+            if (state.players && state.players.length > 0) {
+                state.players.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p;
+                    opt.textContent = p;
+                    opt.selected = (p === state.current_player);
+                    playerSelect.appendChild(opt);
+                });
+            }
+        }
+
         document.getElementById('media-title').textContent = state.title || "Streaming Audio/Video";
 
         const formatTime = (sec) => {
@@ -177,6 +191,9 @@ window.app = {
         if (value) {
             inputController.customAction(`audio:set-sink:${value}`);
         }
+    },
+    mediaPlayerSelectChange: (value) => {
+        inputController.customAction(`player:set-player:${value}`);
     },
 };
 for (const name in inputcontrollerModule) {

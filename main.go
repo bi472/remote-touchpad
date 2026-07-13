@@ -125,14 +125,14 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 			return nil
 		}
 		if action == "mpv:play-pause" {
-			return exec.Command("playerctl", "play-pause").Run()
+			return runPlayerctlCmd("play-pause")
 		}
 		if strings.HasPrefix(action, "mpv:seek:") {
 			secs := action[len("mpv:seek:"):]
 			if strings.HasPrefix(secs, "-") {
-				return exec.Command("playerctl", "position", secs[1:]+"-").Run()
+				return runPlayerctlCmd("position", secs[1:]+"-")
 			} else {
-				return exec.Command("playerctl", "position", secs+"+").Run()
+				return runPlayerctlCmd("position", secs+"+")
 			}
 		}
 		if strings.HasPrefix(action, "mpv:seek-to:") {
@@ -143,7 +143,7 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 				mediaStateMu.Unlock()
 				if dur > 0 {
 					targetSecs := (percent / 100.0) * dur
-					return exec.Command("playerctl", "position", fmt.Sprintf("%f", targetSecs)).Run()
+					return runPlayerctlCmd("position", fmt.Sprintf("%f", targetSecs))
 				}
 			}
 			return nil
@@ -151,16 +151,22 @@ func processCommand(controller inputcontrol.Controller, command string) error {
 		if strings.HasPrefix(action, "mpv:volume:") {
 			volStr := action[len("mpv:volume:"):]
 			if vol, e := strconv.ParseFloat(volStr, 64); e == nil {
-				targetVol := vol / 100.0
-				return exec.Command("playerctl", "volume", fmt.Sprintf("%f", targetVol)).Run()
+				return exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", fmt.Sprintf("%d%%", int(vol))).Run()
 			}
 			return nil
 		}
 		if action == "mpv:playlist:next" {
-			return exec.Command("playerctl", "next").Run()
+			return runPlayerctlCmd("next")
 		}
 		if action == "mpv:playlist:prev" {
-			return exec.Command("playerctl", "previous").Run()
+			return runPlayerctlCmd("previous")
+		}
+		if strings.HasPrefix(action, "player:set-player:") {
+			player := action[len("player:set-player:"):]
+			mediaStateMu.Lock()
+			currentPlayer = player
+			mediaStateMu.Unlock()
+			return nil
 		}
 		if strings.HasPrefix(action, "audio:set-sink:") {
 			sink := action[len("audio:set-sink:"):]
@@ -444,22 +450,25 @@ func main() {
 }
 
 type MediaState struct {
-	Type        string   `json:"type"`
-	Title       string   `json:"title"`
-	Position    float64  `json:"position"`
-	Duration    float64  `json:"duration"`
-	Paused      bool     `json:"paused"`
-	Volume      float64  `json:"volume"`
-	Sinks       []string `json:"sinks"`
-	CurrentSink string   `json:"current_sink"`
-	Active      bool     `json:"active"`
+	Type          string   `json:"type"`
+	Title         string   `json:"title"`
+	Position      float64  `json:"position"`
+	Duration      float64  `json:"duration"`
+	Paused        bool     `json:"paused"`
+	Volume        float64  `json:"volume"`
+	Sinks         []string `json:"sinks"`
+	CurrentSink   string   `json:"current_sink"`
+	Active        bool     `json:"active"`
+	Players       []string `json:"players"`
+	CurrentPlayer string   `json:"current_player"`
 }
 
 var (
-	wsClientsMu sync.Mutex
-	wsClients   = make(map[*websocket.Conn]bool)
-	mediaState   MediaState
-	mediaStateMu sync.Mutex
+	wsClientsMu   sync.Mutex
+	wsClients     = make(map[*websocket.Conn]bool)
+	mediaState     MediaState
+	mediaStateMu   sync.Mutex
+	currentPlayer  string
 )
 
 func broadcastMessage(msg interface{}) {
@@ -468,6 +477,58 @@ func broadcastMessage(msg interface{}) {
 	for ws := range wsClients {
 		websocket.JSON.Send(ws, msg)
 	}
+}
+
+func runPlayerctlCmd(actionCmd string, extraArgs ...string) error {
+	mediaStateMu.Lock()
+	p := currentPlayer
+	mediaStateMu.Unlock()
+
+	args := []string{}
+	if p != "" {
+		args = append(args, "-p", p)
+	}
+	args = append(args, actionCmd)
+	args = append(args, extraArgs...)
+
+	return exec.Command("playerctl", args...).Run()
+}
+
+func fetchSystemVolume() float64 {
+	out, err := exec.Command("pactl", "get-sink-volume", "@DEFAULT_SINK@").Output()
+	if err != nil {
+		return 100.0
+	}
+	str := string(out)
+	idx := strings.Index(str, "%")
+	if idx == -1 {
+		return 100.0
+	}
+	start := idx - 1
+	for start >= 0 && (str[start] >= '0' && str[start] <= '9' || str[start] == ' ' || str[start] == '\t') {
+		start--
+	}
+	valStr := strings.TrimSpace(str[start+1 : idx])
+	if val, err := strconv.ParseFloat(valStr, 64); err == nil {
+		return val
+	}
+	return 100.0
+}
+
+func fetchActivePlayers() []string {
+	out, err := exec.Command("playerctl", "-l").Output()
+	if err != nil {
+		return []string{}
+	}
+	lines := strings.Split(string(out), "\n")
+	players := []string{}
+	for _, line := range lines {
+		name := strings.TrimSpace(line)
+		if name != "" {
+			players = append(players, name)
+		}
+	}
+	return players
 }
 
 func fetchAudioSinks() ([]string, string) {
@@ -527,7 +588,37 @@ func startMprisManager() {
 	for {
 		time.Sleep(500 * time.Millisecond)
 
-		out, err := exec.Command("playerctl", "metadata", "--format", "{{title}}||{{position}}||{{mpris:length}}||{{status}}||{{volume}}").Output()
+		players := fetchActivePlayers()
+		if len(players) == 0 {
+			mediaStateMu.Lock()
+			if mediaState.Active {
+				mediaState = MediaState{Type: "media-state", Active: false}
+				broadcastMessage(mediaState)
+			}
+			mediaStateMu.Unlock()
+			continue
+		}
+
+		mediaStateMu.Lock()
+		p := currentPlayer
+		found := false
+		for _, pl := range players {
+			if pl == p {
+				found = true
+				break
+			}
+		}
+		if !found {
+			currentPlayer = ""
+			p = ""
+		}
+		mediaStateMu.Unlock()
+
+		args := []string{"metadata", "--format", "{{title}}||{{position}}||{{mpris:length}}||{{status}}||{{volume}}"}
+		if p != "" {
+			args = append([]string{"-p", p}, args...)
+		}
+		out, err := exec.Command("playerctl", args...).Output()
 		if err != nil {
 			mediaStateMu.Lock()
 			if mediaState.Active {
@@ -538,7 +629,7 @@ func startMprisManager() {
 			continue
 		}
 
-		title, position, duration, paused, volume, err := parsePlayerctlOutput(string(out))
+		title, position, duration, paused, _, err := parsePlayerctlOutput(string(out))
 		if err != nil {
 			continue
 		}
@@ -550,7 +641,9 @@ func startMprisManager() {
 		mediaState.Position = position
 		mediaState.Duration = duration
 		mediaState.Paused = paused
-		mediaState.Volume = volume
+		mediaState.Volume = fetchSystemVolume()
+		mediaState.Players = players
+		mediaState.CurrentPlayer = currentPlayer
 		mediaState.Sinks, mediaState.CurrentSink = fetchAudioSinks()
 
 		broadcastMessage(mediaState)

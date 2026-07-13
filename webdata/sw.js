@@ -1,12 +1,11 @@
-const CACHE_NAME = 'remote-touchpad-v6';
+const CACHE_NAME = 'remote-touchpad-v7';
 const ASSETS = [
   './',
   './index.html',
   './main.css',
+  './manifest.json',
   './icon.png',
-  './icon.woff',
-  './icon-192.png',
-  './icon-512.png',
+  './icon_square.png',
   './app/main.mjs',
   './app/ui.mjs',
   './app/inputcontroller.mjs',
@@ -18,6 +17,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS);
@@ -34,7 +34,7 @@ self.addEventListener('activate', (event) => {
             return caches.delete(key);
           }
         })
-      );
+      ).then(() => self.clients.claim());
     })
   );
 });

@@ -35,6 +35,15 @@ const socket = new Socket(url, secret);
 const inputController = new InputController(socket);
 const ui = new UI(inputController);
 
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+        socket.ensureConnected();
+    }
+});
+window.addEventListener("focus", () => {
+    socket.ensureConnected();
+});
+
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch((err) => {

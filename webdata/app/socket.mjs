@@ -31,6 +31,7 @@ export default class Socket extends EventTarget {
     #secret;
     #authenticated;
     #ws;
+    #reconnectTimeoutId = null;
 
     constructor(url, secret) {
         super();
@@ -40,6 +41,10 @@ export default class Socket extends EventTarget {
     }
 
     #connect() {
+        if (this.#reconnectTimeoutId) {
+            clearTimeout(this.#reconnectTimeoutId);
+            this.#reconnectTimeoutId = null;
+        }
         this.#authenticated = false;
         this.#ws = new WebSocket(this.#url);
         this.#ws.addEventListener("message", this.#handle_ws_message.bind(this));
@@ -64,9 +69,19 @@ export default class Socket extends EventTarget {
 
     #handle_ws_close() {
         this.dispatchEvent(new CustomEvent("close"));
-        setTimeout(() => {
-            this.#connect();
-        }, 2000);
+        if (!this.#reconnectTimeoutId) {
+            this.#reconnectTimeoutId = setTimeout(() => {
+                this.#reconnectTimeoutId = null;
+                this.#connect();
+            }, 2000);
+        }
+    }
+
+    ensureConnected() {
+        if (this.#ws && (this.#ws.readyState === WebSocket.OPEN || this.#ws.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+        this.#connect();
     }
 
     send(message) {
